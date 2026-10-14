@@ -207,7 +207,7 @@ grep -E '^\[ERROR\]|^\[WARN(ING)?\].*\.java|PMD Failure:|Tests run:.*(Failures|E
 grep -q 'Failed to execute goal com.diffplug.spotless' "$log" &&
   echo "HINT: formatting problem -> run ./verify --fix"
 grep -q 'Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin' "$log" &&
-  echo "HINT: structure limit hit -> split the method/class/package; limits in config/checkstyle/checkstyle.xml"
+  echo "HINT: structure limit hit -> find the concept that wants out of this method/class/package; limits in config/checkstyle/checkstyle.xml"
 grep -q 'Unsupported class file major version' "$log" &&
   echo "HINT: a tool is older than the JDK -> bump it; for PMD that is pmd.version (pmd-java + pmd-core plugin dependencies) in pom.xml"
 grep -q 'Failed to execute goal org.apache.maven.plugins:maven-pmd-plugin' "$log" &&
@@ -220,6 +220,12 @@ grep -q 'Rule violated for bundle' "$log" &&
   echo "HINT: coverage below threshold -> see target/site/jacoco/index.html"
 grep -q 'Snapshot mismatch' "$log" &&
   echo "HINT: snapshot differs -> if intended, run ./verify --snapshots"
+# Structure and design gates point at a design problem, not at the line to tweak.
+if grep -q -E 'Failed to execute goal org.apache.maven.plugins:maven-(checkstyle|pmd)-plugin|Architecture Violation' "$log"; then
+  echo "NOTE: these gates reveal design problems; the right answer may be broader than the flagged line."
+  echo "      If the only fix you see adds no design value (mechanical splits, moving code to fit a number),"
+  echo "      stop and ask a human or a design-focused agent rather than satisfying the gate to the letter."
+fi
 grep -q 'Creating new violation store is disabled' "$log" &&
   echo "HINT: ArchUnit store missing -> run ./verify --baseline once and commit config/baseline/archunit"
 exit 1

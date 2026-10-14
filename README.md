@@ -78,6 +78,12 @@ breaks a rule, so keep it specific.
 - Real infrastructure in integration tests (Testcontainers), never an in-memory look-alike database.
 - Coverage is a floor, mutation score is the real measure: an agent can execute code without
   asserting anything, PIT catches that.
+- Gates are symptoms, not targets. A size, coupling, complexity or architecture failure usually
+  reveals a design problem whose answer can be much broader than the flagged line: a missing
+  concept, a misplaced responsibility, a boundary to rethink. Satisfying a rule to the letter
+  (splitting a method mechanically, moving code around to fit a number) is not a fix. When the only
+  available fix brings no real design benefit, stop and ask a human or a design-focused agent.
+  `./verify` repeats this whenever a design gate fails.
 - Fix the code, not the gate: never loosen a threshold or add an ignore to get green. The ratchet
   enforces this (see below).
 
