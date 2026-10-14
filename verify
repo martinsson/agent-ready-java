@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Single entry point for deterministic feedback. Humans, CI and agents all run this.
+#
+#   ./verify              fast gates (seconds to ~1 min): format, structure, static analysis,
+#                         compile with Error Prone + NullAway, PMD, unit/property/architecture/
+#                         snapshot tests, coverage gate
+#   ./verify --full       everything above + Docker integration tests (Testcontainers),
+#                         mutation testing (PIT), copy-paste detection (CPD)
+#   ./verify --fix        auto-format with Spotless first, then run the fast gates
+#   ./verify --snapshots  re-record Selfie snapshots after an intentional behaviour change
+#
+# Exit code 0 = everything green. Output is deliberately short; full log: target/verify.log
+set -uo pipefail
+cd "$(dirname "$0")"
+
+MVN=./mvnw
+[ -x "$MVN" ] || MVN=mvn
+
+mode=fast
+fix=0
+snapshots=0
+for arg in "$@"; do
+  case "$arg" in
+    --full) mode=full ;;
+    --fix) fix=1 ;;
+    --snapshots) snapshots=1 ;;
+    -h | --help)
+      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $arg (try --help)" >&2
+      exit 2
+      ;;
+  esac
+done
+
+mkdir -p target
+log=target/verify.log
+
+if [ "$snapshots" -eq 1 ]; then
+  echo "Re-recording Selfie snapshots (review the git diff afterwards)..."
+  "$MVN" test -Dselfie=overwrite >"$log" 2>&1 || {
+    echo "SNAPSHOT RUN FAILED (see $log)"
+    exit 1
+  }
+  echo "SNAPSHOTS UPDATED"
+  exit 0
+fi
+
+if [ "$fix" -eq 1 ]; then
+  "$MVN" spotless:apply >"$log" 2>&1 || {
+    echo "SPOTLESS:APPLY FAILED (see $log)"
+    exit 1
+  }
+fi
+
+args=(verify)
+[ "$mode" = full ] && args+=(-Pfull)
+
+if "$MVN" "${args[@]}" >"$log" 2>&1; then
+  echo "VERIFY OK ($mode)"
+  exit 0
+fi
+
+echo "VERIFY FAILED ($mode). First problems (full log: $log):"
+# Keep the lines that name a file, a rule or a failing test; drop Maven boilerplate; print each once.
+grep -E '^\[ERROR\]|^\[WARN(ING)?\].*\.java|PMD Failure:|Tests run:.*(Failures|Errors): [1-9]|^(Class|Method|Field|Constructor|Package|Cycle detected)|Snapshot mismatch|is below threshold|Survived' "$log" |
+  grep -v -E 'To see the full stack trace|Re-run Maven|For more information|^\[ERROR\] \[Help 1\]|^\[ERROR\] *$|You have 0 Checkstyle violations|See dump files|^\[ERROR\] Failures: *$' |
+  sed -E -e 's/^\[ERROR\] +//' -e 's/ -> \[Help 1\]$//' |
+  sed "s|$PWD/||g" |
+  awk '!seen[$0]++' |
+  head -60
+
+# Hints the agent can act on directly. Each one keys on a failure message, never on a plugin name,
+# because plugin names appear in every log.
+grep -q 'Failed to execute goal com.diffplug.spotless' "$log" &&
+  echo "HINT: formatting problem -> run ./verify --fix"
+grep -q 'Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin' "$log" &&
+  echo "HINT: structure limit hit -> split the method/class/package; limits in config/checkstyle/checkstyle.xml"
+grep -q 'Failed to execute goal org.apache.maven.plugins:maven-pmd-plugin' "$log" &&
+  echo "HINT: PMD rule broken -> see target/pmd.xml (or target/cpd.xml for duplication); rules in config/pmd/ruleset.xml"
+grep -q 'Architecture Violation' "$log" &&
+  echo "HINT: architecture rule broken -> the 'because' text says why; rules in ArchitectureTest"
+grep -q 'is below threshold' "$log" &&
+  echo "HINT: surviving mutants -> open target/pit-reports/index.html and add assertions"
+grep -q 'Rule violated for bundle' "$log" &&
+  echo "HINT: coverage below threshold -> see target/site/jacoco/index.html"
+grep -q 'Snapshot mismatch' "$log" &&
+  echo "HINT: snapshot differs -> if intended, run ./verify --snapshots"
+exit 1
