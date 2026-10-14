@@ -15,10 +15,19 @@
 # Exit code 0 = everything green. Output is deliberately short; full log: target/verify.log
 # RATCHET_BASE=<git ref> sets what the ratchet compares with (default: merge-base with origin).
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 2
 
 MVN=./mvnw
 [ -x "$MVN" ] || MVN=mvn
+
+# The ratchet (tools/ratchet) needs the JDK the build targets. When `java` on the PATH is older,
+# use the one Maven runs on.
+JAVA=java
+[ -n "${JAVA_HOME:-}" ] && JAVA="$JAVA_HOME/bin/java"
+if ! "$JAVA" -version 2>&1 | grep -q -E 'version "(2[5-9]|[3-9][0-9])'; then
+  runtime=$("$MVN" -v 2>/dev/null | sed -n 's/.*runtime: //p')
+  [ -x "$runtime/bin/java" ] && JAVA="$runtime/bin/java"
+fi
 
 mode=fast
 action=verify
@@ -65,6 +74,7 @@ format_staged() {
   done
   [ "${#whole[@]}" -eq 0 ] && return 0
   for f in "${whole[@]}"; do
+    # shellcheck disable=SC2016 # the $ in the sed expression is a literal regex character
     patterns="$patterns,.*$(printf '%s' "$f" | sed 's/[][\.*^$()+?{}|]/\\&/g')"
   done
   if "$MVN" -q spotless:apply -DspotlessFiles="${patterns#,}" >"$log" 2>&1; then
@@ -95,9 +105,15 @@ record_baseline() {
     echo "NullAway:AnnotatedPackages or switch single checks to WARN instead). See $log"
     exit 1
   fi
-  java tools/Ratchet.java baseline || exit 1
+  "$JAVA" tools/ratchet/Ratchet.java baseline || exit 1
   echo "BASELINE RECORDED. Review and commit config/baseline. From now on it may only shrink."
   git status --short config/baseline
+}
+
+# The shell scripts get a linter too, when shellcheck is installed (it is on GitHub runners).
+lint_scripts() {
+  command -v shellcheck >/dev/null || return 0
+  shellcheck -f gcc verify .githooks/*
 }
 
 ratchet() {
@@ -117,7 +133,7 @@ ratchet() {
     echo "RATCHET: cannot find $base (shallow clone? fetch the full history)"
     return 1
   fi
-  java tools/Ratchet.java check "$base"
+  "$JAVA" tools/ratchet/Ratchet.java check "$base"
 }
 
 case "$action" in
@@ -155,21 +171,27 @@ args=(verify)
 
 "$MVN" "${args[@]}" >"$log" 2>&1
 build=$?
-ratchet_out=$(ratchet)
-ratchet_status=$?
+# A PMD older than the JDK cannot read its class files. PMD only logs that, turns type resolution
+# off and passes, so type-based rules quietly stop working. Treat it as the failure it is.
+grep -q -E 'Unsupported class file major version|Parsing failed in ParseLock' "$log" && build=1
+checks_out=$(ratchet)
+checks_status=$?
+lint_out=$(lint_scripts)
+[ -n "$lint_out" ] && checks_out="${checks_out:+$checks_out
+}$lint_out" && checks_status=1
 
 if [ -z "${CI:-}" ] && [ "$(git config core.hooksPath)" != .githooks ]; then
   echo "TIP: ./verify --install-hooks formats on commit and runs these gates on push"
 fi
 
-if [ "$build" -eq 0 ] && [ "$ratchet_status" -eq 0 ]; then
-  [ -n "$ratchet_out" ] && echo "$ratchet_out"
+if [ "$build" -eq 0 ] && [ "$checks_status" -eq 0 ]; then
+  [ -n "$checks_out" ] && echo "$checks_out"
   echo "VERIFY OK ($mode)"
   exit 0
 fi
 
 echo "VERIFY FAILED ($mode). First problems (full log: $log):"
-[ -n "$ratchet_out" ] && echo "$ratchet_out"
+[ -n "$checks_out" ] && echo "$checks_out"
 [ "$build" -eq 0 ] && exit 1
 
 # Keep the lines that name a file, a rule or a failing test; drop Maven boilerplate; print each once.
@@ -186,6 +208,8 @@ grep -q 'Failed to execute goal com.diffplug.spotless' "$log" &&
   echo "HINT: formatting problem -> run ./verify --fix"
 grep -q 'Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin' "$log" &&
   echo "HINT: structure limit hit -> split the method/class/package; limits in config/checkstyle/checkstyle.xml"
+grep -q 'Unsupported class file major version' "$log" &&
+  echo "HINT: a tool is older than the JDK -> bump it; for PMD that is pmd.version (pmd-java + pmd-core plugin dependencies) in pom.xml"
 grep -q 'Failed to execute goal org.apache.maven.plugins:maven-pmd-plugin' "$log" &&
   echo "HINT: PMD rule broken -> see target/pmd.xml (or target/cpd.xml for duplication); rules in config/pmd/ruleset.xml"
 grep -q 'Architecture Violation' "$log" &&

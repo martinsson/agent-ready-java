@@ -11,7 +11,7 @@
   <description>Hexagonal Java template wired with deterministic feedback tools for coding agents</description>
 
   <properties>
-    <maven.compiler.release>21</maven.compiler.release>
+    <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <!-- Verified on JDK 21 and 25. Bump with `mvn versions:display-dependency-updates versions:display-plugin-updates`. -->
@@ -124,6 +124,30 @@
 
   <build>
     <plugins>
+      <!--
+        The ratchet tool (tools/) is compiled as test sources: every gate below applies to it too,
+        and its unit tests run with the others. Nothing from tools/ ends up in the jar.
+      -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <id>tools-as-test-sources</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>add-test-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>tools</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
       <!-- validate phase: cheapest gates first -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -139,7 +163,7 @@
             <configuration>
               <rules>
                 <requireJavaVersion>
-                  <version>[21,)</version>
+                  <version>[25,)</version>
                 </requireJavaVersion>
                 <bannedDependencies>
                   <excludes>
@@ -160,6 +184,11 @@
         <configuration>
           <ratchetFrom>${spotless.ratchetFrom}</ratchetFrom>
           <java>
+            <includes>
+              <include>src/main/java/**/*.java</include>
+              <include>src/test/java/**/*.java</include>
+              <include>tools/**/*.java</include>
+            </includes>
             <googleJavaFormat>
               <version>${google-java-format.version}</version>
               <style>GOOGLE</style>
@@ -192,6 +221,11 @@
           <configLocation>config/checkstyle/checkstyle.xml</configLocation>
           <suppressionsLocation>${checkstyle.baseline}</suppressionsLocation>
           <includeTestSourceDirectory>true</includeTestSourceDirectory>
+          <!-- Explicit: Checkstyle runs in validate, before build-helper registers tools/ -->
+          <testSourceDirectories>
+            <testSourceDirectory>${project.basedir}/src/test/java</testSourceDirectory>
+            <testSourceDirectory>${project.basedir}/tools</testSourceDirectory>
+          </testSourceDirectories>
           <consoleOutput>true</consoleOutput>
           <violationSeverity>warning</violationSeverity>
         </configuration>
@@ -216,10 +250,8 @@
           <showWarnings>true</showWarnings>
           <compilerArgs>
             <arg>-XDcompilePolicy=simple</arg>
-            <!-- Required by Error Prone on JDK 21 (harmless on later JDKs) -->
-            <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
             <arg>--should-stop=ifError=FLOW</arg>
-            <arg>-Xplugin:ErrorProne -XepDisableWarningsInGeneratedCode -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.example</arg>
+            <arg>-Xplugin:ErrorProne -XepDisableWarningsInGeneratedCode -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.example,ratchet</arg>
             <arg>-Xlint:all,-processing,-serial</arg>
             <arg>-Werror</arg>
           </compilerArgs>
@@ -238,7 +270,12 @@
         </configuration>
       </plugin>
 
-      <!-- process-classes: PMD needs compiled classes for type resolution -->
+      <!--
+        process-test-classes: PMD needs compiled classes (main and test) for type resolution.
+        Keep pmd-java and pmd-core in sync with pmd.version: the PMD that ships with the plugin is
+        older and cannot read class files of a recent JDK. The verify script fails when that happens,
+        because PMD itself only logs it and passes.
+      -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-pmd-plugin</artifactId>
@@ -261,12 +298,13 @@
           </rulesets>
           <printFailingErrors>true</printFailingErrors>
           <minimumTokens>100</minimumTokens>
+          <includeTests>true</includeTests>
           <excludeFromFailureFile>${pmd.baseline}</excludeFromFailureFile>
         </configuration>
         <executions>
           <execution>
             <id>pmd-check</id>
-            <phase>process-classes</phase>
+            <phase>process-test-classes</phase>
             <goals>
               <goal>check</goal>
             </goals>

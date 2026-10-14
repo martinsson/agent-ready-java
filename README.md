@@ -44,7 +44,8 @@ a tip until it is done. GitLab projects reuse the template with `include:` (see 
 | Real database | Testcontainers (PostgreSQL) | `JdbcWalletRepositoryIT` | full |
 | Do the tests actually assert something? | PIT mutation testing (threshold 85%) | `pom.xml` profile `full` | full |
 | Copy-paste | PMD CPD | `pom.xml` profile `full` | full |
-| Nothing got looser: baselines only shrink, minimums only rise, limits only fall, no new `@SuppressWarnings`/`NOPMD`/`@Disabled` | `tools/Ratchet.java` | `config/baseline/`, `pom.xml` properties | fast |
+| Nothing got looser: baselines only shrink, minimums only rise, limits only fall, no new `@SuppressWarnings`/`NOPMD`/`@Disabled` | `tools/ratchet/` | `config/baseline/`, `pom.xml` properties | fast |
+| Shell scripts (`verify`, git hooks) | shellcheck, when installed (it is on GitHub runners) | `verify` | fast |
 | Changed lines are covered (≥ 80%) | diff-cover | CI files | CI, PRs only |
 
 Why Selfie rather than Approvals: expected values are inline in the test source, and
@@ -85,7 +86,7 @@ breaks a rule, so keep it specific.
 1. Copy `config/`, `.mvn/jvm.config`, the `verify` script, and the plugin blocks from `pom.xml`.
 2. Change `com.example` in the `AnnotatedPackages` option (pom), `ArchitectureTest` and the JaCoCo/PIT
    package filters.
-3. Copy `.githooks/`, `tools/Ratchet.java`, `config/baseline/` (empty it) and one of the CI files.
+3. Copy `.githooks/`, `tools/ratchet/`, `config/baseline/` (empty it) and one of the CI files.
 4. Make the build compile with Error Prone and NullAway, then run `./verify --baseline` and commit
    `config/baseline/`. That is the ratchet (details below).
 5. Set `coverage.*.minimum` and `mutation.score.minimum` in `pom.xml` to today's values (or a bit
@@ -118,9 +119,19 @@ When a human decides a gate should be looser, a commit in the range carries a
 `Ratchet-Override: <reason>` line: the failures become warnings and the decision stays in history.
 Protect `config/` and `tools/` with CODEOWNERS so such a change needs review.
 
-Verified on JDK 21 and JDK 25 (Docker 29). Tools that hook into javac or read class files
-(google-java-format, Error Prone, NullAway, PMD, JaCoCo, PIT, ArchUnit, Testcontainers) are the
-ones that break on a new JDK: bump those first. `mvn versions:display-dependency-updates
+The ratchet eats its own cooking: Maven compiles `tools/` as test sources (build-helper), so
+Spotless, Checkstyle, Error Prone, NullAway and PMD check it and its unit tests run with the others.
+`./verify` still runs it with plain `java tools/ratchet/Ratchet.java` (multi-file source launcher,
+JDK 22+), using the JDK Maven runs on when `java` on the PATH is older.
+
+Targets JDK 25 (`maven.compiler.release` 25, the enforcer requires 25+). Verified on JDK 25 and 26
+(Docker 29). Tools that hook into javac or read class files (google-java-format, Error Prone,
+NullAway, PMD, JaCoCo, PIT, ArchUnit, Testcontainers) are the ones that break on a new JDK: bump
+those first. PMD is the sneaky one: a PMD older than the JDK logs `Unsupported class file major
+version`, switches type resolution off and *passes*, so type-based rules stop working without a
+failure. `./verify` turns that log line into a failure. Upgrading PMD means bumping `pmd.version`
+(the `pmd-java` and `pmd-core` plugin dependencies), not just the plugin: the plugin's bundled PMD
+is older (maven-pmd-plugin 3.24.0 ships PMD 7.3.0, for instance). `mvn versions:display-dependency-updates
 versions:display-plugin-updates` lists what is available. google-java-format 1.37.0 does not work
 with Spotless 3.10.4 yet, so it stays on 1.36.0.
 

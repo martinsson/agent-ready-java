@@ -13,7 +13,7 @@
 # (gitlab.com shared runners are). Without one, set AGENT_READY_FULL: "false".
 
 variables:
-  AGENT_READY_IMAGE: maven:3.9.11-eclipse-temurin-21
+  AGENT_READY_IMAGE: maven:3.9.11-eclipse-temurin-25
   AGENT_READY_FULL: "true"
 
 stages:
