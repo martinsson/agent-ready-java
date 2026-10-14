@@ -1,0 +1,13 @@
+#
+#Wed Oct 14 18:16:15 CEST 2026
+classes\ that\ are\ top\ level\ classes\ and\ have\ simple\ name\ not\ ending\ with\ 'Test'\ and\ have\ simple\ name\ not\ ending\ with\ 'IT'\ should\ be\ in\ a\ package\ with\ at\ most\ 15\ classes,\ because\ a\ package\ that\ keeps\ growing\ hides\ several\ concepts\:\ split\ it\ by\ concept=e3234bc7-3f31-41cf-911a-9bca0fea80c0
+classes\ that\ reside\ in\ a\ package\ '..application.port..'\ should\ be\ interfaces,\ because\ ports\ are\ contracts;\ implementations\ live\ in\ adapters\ or\ in\ the\ service=6e61d2eb-bbe0-4dba-9900-0e6a624acab2
+no\ classes\ should\ access\ standard\ streams=fea1a7f9-bef4-4b9d-9225-4760aaa35ea0
+no\ classes\ should\ depend\ on\ classes\ that\ reside\ in\ a\ package\ 'org.mockito..',\ because\ we\ write\ in-memory\ fakes\ of\ ports\ instead\ of\ mocks\ (see\ InMemoryWalletRepository)=02faaa21-ceda-4a5c-9ae0-c5b384ce18eb
+no\ classes\ should\ throw\ generic\ exceptions=f28c835d-78a1-41e9-acbb-0ee7d80b8438
+no\ classes\ should\ use\ field\ injection,\ because\ field\ injection\ is\ considered\ harmful;\ use\ constructor\ injection\ or\ setter\ injection\ instead;\ see\ https\://stackoverflow.com/q/39890849\ for\ detailed\ explanations=7b8eca96-47ef-4111-baba-5f15496f7ac6
+no\ classes\ should\ use\ java.util.logging=cb05a21f-4e18-4894-ab2b-b1f794cd0bfe
+no\ classes\ that\ reside\ in\ a\ package\ '..adapter.in..'\ should\ depend\ on\ classes\ that\ reside\ in\ a\ package\ '..adapter.out..',\ because\ adapters\ are\ wired\ together\ by\ the\ application,\ never\ directly=cd57f4e8-899e-4b57-bbee-fe7b981bf8c7
+no\ classes\ that\ reside\ in\ a\ package\ '..wallet.application..'\ should\ depend\ on\ classes\ that\ reside\ in\ a\ package\ '..wallet.adapter..',\ because\ the\ application\ talks\ to\ the\ outside\ only\ through\ ports\ (README)=56e6a766-9556-417c-a8a7-dc7e7c90d985
+no\ classes\ that\ reside\ in\ a\ package\ '..wallet.domain..'\ should\ depend\ on\ classes\ that\ reside\ in\ any\ package\ ['..wallet.application..',\ '..wallet.adapter..',\ 'java.sql..',\ 'javax.sql..',\ 'org.postgresql..'],\ because\ the\ domain\ is\ pure\ business\ logic\:\ no\ ports,\ adapters\ or\ infrastructure\ (README)=80bd9f8d-b361-43b3-98e0-173943421e0e
+slices\ matching\ 'com.example.wallet.(*)..'\ should\ be\ free\ of\ cycles,\ because\ cycles\ make\ the\ dependency\ direction\ ambiguous=6f8534a0-5ecb-45d6-abd5-e3ecf0e67bf3

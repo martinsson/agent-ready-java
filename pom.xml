@@ -29,6 +29,21 @@
     <checkstyle.version>10.21.1</checkstyle.version>
     <google-java-format.version>1.36.0</google-java-format.version>
     <pmd.version>7.28.0</pmd.version>
+
+    <!--
+      Ratchet. Existing violations are recorded under config/baseline (regenerate with the verify
+      script's baseline option) and only NEW violations fail. The verify script also refuses a
+      baseline that grows, a *.minimum property that drops, and a Checkstyle or PMD limit that is
+      loosened or removed (tools/Ratchet.java).
+    -->
+    <checkstyle.baseline>config/baseline/checkstyle-suppressions.xml</checkstyle.baseline>
+    <pmd.baseline>config/baseline/pmd-exclusions.properties</pmd.baseline>
+    <cpd.baseline>config/baseline/cpd-exclusions.txt</cpd.baseline>
+    <!-- Legacy repo: set to origin/main so Spotless only formats files changed since that ref. -->
+    <spotless.ratchetFrom></spotless.ratchetFrom>
+    <coverage.line.minimum>0.90</coverage.line.minimum>
+    <coverage.branch.minimum>0.85</coverage.branch.minimum>
+    <mutation.score.minimum>85</mutation.score.minimum>
   </properties>
 
   <dependencyManagement>
@@ -143,6 +158,7 @@
         <artifactId>spotless-maven-plugin</artifactId>
         <version>3.10.4</version>
         <configuration>
+          <ratchetFrom>${spotless.ratchetFrom}</ratchetFrom>
           <java>
             <googleJavaFormat>
               <version>${google-java-format.version}</version>
@@ -174,9 +190,9 @@
         </dependencies>
         <configuration>
           <configLocation>config/checkstyle/checkstyle.xml</configLocation>
+          <suppressionsLocation>${checkstyle.baseline}</suppressionsLocation>
           <includeTestSourceDirectory>true</includeTestSourceDirectory>
           <consoleOutput>true</consoleOutput>
-          <failsOnError>true</failsOnError>
           <violationSeverity>warning</violationSeverity>
         </configuration>
         <executions>
@@ -242,8 +258,8 @@
             <ruleset>config/pmd/ruleset.xml</ruleset>
           </rulesets>
           <printFailingErrors>true</printFailingErrors>
-          <failOnViolation>true</failOnViolation>
           <minimumTokens>100</minimumTokens>
+          <excludeFromFailureFile>${pmd.baseline}</excludeFromFailureFile>
         </configuration>
         <executions>
           <execution>
@@ -302,12 +318,12 @@
                     <limit>
                       <counter>LINE</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.90</minimum>
+                      <minimum>${coverage.line.minimum}</minimum>
                     </limit>
                     <limit>
                       <counter>BRANCH</counter>
                       <value>COVEREDRATIO</value>
-                      <minimum>0.85</minimum>
+                      <minimum>${coverage.branch.minimum}</minimum>
                     </limit>
                   </limits>
                 </rule>
@@ -353,6 +369,9 @@
                 <goals>
                   <goal>cpd-check</goal>
                 </goals>
+                <configuration>
+                  <excludeFromFailureFile>${cpd.baseline}</excludeFromFailureFile>
+                </configuration>
               </execution>
             </executions>
           </plugin>
@@ -377,7 +396,7 @@
                 <param>com.example.wallet.domain.*</param>
                 <param>com.example.wallet.application.*</param>
               </targetTests>
-              <mutationThreshold>85</mutationThreshold>
+              <mutationThreshold>${mutation.score.minimum}</mutationThreshold>
               <timestampedReports>false</timestampedReports>
               <outputFormats>
                 <outputFormat>HTML</outputFormat>

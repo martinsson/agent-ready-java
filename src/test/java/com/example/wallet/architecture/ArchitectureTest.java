@@ -3,6 +3,7 @@ package com.example.wallet.architecture;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
+import static com.tngtech.archunit.library.freeze.FreezingArchRule.freeze;
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -20,6 +21,10 @@ import java.util.TreeMap;
 /**
  * Architecture as executable rules. A violation message is the first thing an agent reads, so every
  * rule says WHY it exists. Copy this file into an existing repo and adjust the packages.
+ *
+ * <p>Every rule is frozen: violations recorded in config/baseline/archunit are tolerated, any other
+ * violation fails. In this template the store is empty, so every violation fails. In a legacy repo
+ * run {@code ./verify --baseline} once and commit the store; it may only shrink afterwards.
  */
 @AnalyzeClasses(packages = "com.example", importOptions = ImportOption.DoNotIncludeJars.class)
 class ArchitectureTest {
@@ -30,99 +35,107 @@ class ArchitectureTest {
 
   @ArchTest
   static final ArchRule domainDependsOnNothingOutward =
-      noClasses()
-          .that()
-          .resideInAPackage("..wallet.domain..")
-          .should()
-          .dependOnClassesThat()
-          .resideInAnyPackage(
-              "..wallet.application..",
-              "..wallet.adapter..",
-              "java.sql..",
-              "javax.sql..",
-              "org.postgresql..")
-          .because(
-              "the domain is pure business logic: no ports, adapters or infrastructure (README)");
+      freeze(
+          noClasses()
+              .that()
+              .resideInAPackage("..wallet.domain..")
+              .should()
+              .dependOnClassesThat()
+              .resideInAnyPackage(
+                  "..wallet.application..",
+                  "..wallet.adapter..",
+                  "java.sql..",
+                  "javax.sql..",
+                  "org.postgresql..")
+              .because(
+                  "the domain is pure business logic: no ports, adapters or infrastructure (README)"));
 
   @ArchTest
   static final ArchRule applicationDoesNotKnowAdapters =
-      noClasses()
-          .that()
-          .resideInAPackage("..wallet.application..")
-          .should()
-          .dependOnClassesThat()
-          .resideInAPackage("..wallet.adapter..")
-          .because("the application talks to the outside only through ports (README)");
+      freeze(
+          noClasses()
+              .that()
+              .resideInAPackage("..wallet.application..")
+              .should()
+              .dependOnClassesThat()
+              .resideInAPackage("..wallet.adapter..")
+              .because("the application talks to the outside only through ports (README)"));
 
   @ArchTest
   static final ArchRule inboundAndOutboundAdaptersAreIndependent =
-      noClasses()
-          .that()
-          .resideInAPackage("..adapter.in..")
-          .should()
-          .dependOnClassesThat()
-          .resideInAPackage("..adapter.out..")
-          .because("adapters are wired together by the application, never directly")
-          .allowEmptyShould(true);
+      freeze(
+          noClasses()
+              .that()
+              .resideInAPackage("..adapter.in..")
+              .should()
+              .dependOnClassesThat()
+              .resideInAPackage("..adapter.out..")
+              .because("adapters are wired together by the application, never directly")
+              .allowEmptyShould(true));
 
   @ArchTest
   static final ArchRule portsAreInterfaces =
-      classes()
-          .that()
-          .resideInAPackage("..application.port..")
-          .should()
-          .beInterfaces()
-          .because("ports are contracts; implementations live in adapters or in the service");
+      freeze(
+          classes()
+              .that()
+              .resideInAPackage("..application.port..")
+              .should()
+              .beInterfaces()
+              .because("ports are contracts; implementations live in adapters or in the service"));
 
   @ArchTest
   static final ArchRule noCyclesBetweenLayers =
-      slices()
-          .matching("com.example.wallet.(*)..")
-          .should()
-          .beFreeOfCycles()
-          .because("cycles make the dependency direction ambiguous");
+      freeze(
+          slices()
+              .matching("com.example.wallet.(*)..")
+              .should()
+              .beFreeOfCycles()
+              .because("cycles make the dependency direction ambiguous"));
 
   // ---- Size ----
 
   @ArchTest
   static final ArchRule packagesStaySmall =
-      classes()
-          .that()
-          .areTopLevelClasses()
-          .and()
-          .haveSimpleNameNotEndingWith("Test")
-          .and()
-          .haveSimpleNameNotEndingWith("IT")
-          .should(new PackageSizeCondition(MAX_CLASSES_PER_PACKAGE))
-          .because("a package that keeps growing hides several concepts: split it by concept");
+      freeze(
+          classes()
+              .that()
+              .areTopLevelClasses()
+              .and()
+              .haveSimpleNameNotEndingWith("Test")
+              .and()
+              .haveSimpleNameNotEndingWith("IT")
+              .should(new PackageSizeCondition(MAX_CLASSES_PER_PACKAGE))
+              .because("a package that keeps growing hides several concepts: split it by concept"));
 
   // ---- Testing principles ----
 
   @ArchTest
   static final ArchRule noMockito =
-      noClasses()
-          .should()
-          .dependOnClassesThat()
-          .resideInAPackage("org.mockito..")
-          .because(
-              "we write in-memory fakes of ports instead of mocks (see InMemoryWalletRepository)");
+      freeze(
+          noClasses()
+              .should()
+              .dependOnClassesThat()
+              .resideInAPackage("org.mockito..")
+              .because(
+                  "we write in-memory fakes of ports instead of mocks (see InMemoryWalletRepository)"));
 
   // ---- General coding rules ----
 
   @ArchTest
   static final ArchRule noStandardStreams =
-      GeneralCodingRules.NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS;
+      freeze(GeneralCodingRules.NO_CLASSES_SHOULD_ACCESS_STANDARD_STREAMS);
 
   @ArchTest
   static final ArchRule noGenericExceptions =
-      GeneralCodingRules.NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS;
+      freeze(GeneralCodingRules.NO_CLASSES_SHOULD_THROW_GENERIC_EXCEPTIONS);
 
   @ArchTest
-  static final ArchRule noFieldInjection = GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
+  static final ArchRule noFieldInjection =
+      freeze(GeneralCodingRules.NO_CLASSES_SHOULD_USE_FIELD_INJECTION);
 
   @ArchTest
   static final ArchRule noJavaUtilLogging =
-      GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING;
+      freeze(GeneralCodingRules.NO_CLASSES_SHOULD_USE_JAVA_UTIL_LOGGING);
 
   /** Counts the classes per package and reports each package over the limit once. */
   private static final class PackageSizeCondition extends ArchCondition<JavaClass> {
@@ -148,8 +161,8 @@ class ArchitectureTest {
     public void finish(ConditionEvents events) {
       classesPerPackage.forEach(
           (packageName, count) -> {
-            String message =
-                "Package <" + packageName + "> has " + count + " classes (max " + max + ")";
+            // No count in the message: a frozen violation is matched by its text.
+            String message = "Package <" + packageName + "> has more than " + max + " classes";
             events.add(new SimpleConditionEvent(packageName, count <= max, message));
           });
     }
