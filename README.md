@@ -119,3 +119,8 @@ These were discussed but deliberately left out of this template.
 - Pact / Spring Cloud Contract: contract tests at service boundaries.
 - OWASP Dependency-Check or Trivy: vulnerable dependencies.
 - Sonar quality gate on new code (CI).
+
+## License
+
+[MIT No Attribution](LICENSE) (MIT-0): copy any part of this into your own repository without
+keeping a notice.
