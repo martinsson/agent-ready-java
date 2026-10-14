@@ -216,6 +216,8 @@
           <showWarnings>true</showWarnings>
           <compilerArgs>
             <arg>-XDcompilePolicy=simple</arg>
+            <!-- Required by Error Prone on JDK 21 (harmless on later JDKs) -->
+            <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
             <arg>--should-stop=ifError=FLOW</arg>
             <arg>-Xplugin:ErrorProne -XepDisableWarningsInGeneratedCode -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.example</arg>
             <arg>-Xlint:all,-processing,-serial</arg>
