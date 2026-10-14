@@ -1,0 +1,80 @@
+# Every gate runs here; local hooks are a convenience and can be skipped with --no-verify.
+#   fast  ./verify on every push and pull request (includes the ratchet)
+#   full  ./verify --full: Testcontainers, PIT, CPD, plus coverage of the changed lines on PRs
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The ratchet compares with the PR base, or with the previous tip of main on a push.
+  RATCHET_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the ratchet and diff coverage need the base commit
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: ./verify
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-reports
+          path: |
+            target/verify.log
+            target/surefire-reports/
+            target/checkstyle-result.xml
+            target/pmd.xml
+            target/site/jacoco/
+
+  full:
+    needs: fast
+    runs-on: ubuntu-latest # Docker is available, so Testcontainers needs no setup
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: ./verify --full
+      # Ratchet for coverage: lines changed by the PR must be covered, whatever the global ratio is.
+      - name: Coverage of changed lines
+        if: github.event_name == 'pull_request'
+        run: >
+          pipx run diff-cover==10.6.0 target/site/jacoco/jacoco.xml
+          --compare-branch=${{ github.event.pull_request.base.sha }}
+          --src-roots src/main/java
+          --fail-under=80
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-reports
+          path: |
+            target/verify.log
+            target/surefire-reports/
+            target/failsafe-reports/
+            target/cpd.xml
+            target/pit-reports/
+            target/site/jacoco/

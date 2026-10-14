@@ -4,14 +4,28 @@ A small hexagonal Java project that gives a coding agent (or a human) as much **
 feedback** as possible. Copy the pieces you want into an existing repository.
 
 ```
-./verify              # fast gates, run after every change
-./verify --fix        # auto-format first, then the fast gates
-./verify --full       # + Docker integration tests, mutation testing, copy-paste detection
-./verify --snapshots  # re-record Selfie snapshots after an intentional behaviour change
+./verify                 # fast gates, run after every change
+./verify --fix           # auto-format first, then the fast gates
+./verify --full          # + Docker integration tests, mutation testing, copy-paste detection
+./verify --snapshots     # re-record Selfie snapshots after an intentional behaviour change
+./verify --install-hooks # format on commit, fast gates on push
+./verify --baseline      # record today's violations (adopting this in an existing repo)
 ```
 
 `./verify` prints `VERIFY OK` or a short list of problems with hints. Full log: `target/verify.log`.
 First run on a fresh checkout: use `./verify --fix` so Spotless normalises formatting.
+
+## When each gate runs
+
+| Where | What | Blocks? |
+|---|---|---|
+| pre-commit (`.githooks/pre-commit`) | Formats the staged Java files and re-stages them | Never: committing to save work comes first. A file with unstaged changes is left alone (formatting it would pull those changes into the commit) and pre-push catches it. |
+| pre-push (`.githooks/pre-push`) | `./verify`: every fast gate plus the ratchet | Yes. Size, structure and design are judged on the whole change, not on each commit. |
+| CI (`.github/workflows/verify.yml`, `ci/agent-ready.gitlab-ci.yml`) | `./verify`, then `./verify --full` and coverage of the changed lines | Yes. Hooks can be skipped with `--no-verify`, CI cannot. |
+
+Hooks are opt-in per clone: `./verify --install-hooks` sets `core.hooksPath`, and `./verify` prints
+a tip until it is done. GitLab projects reuse the template with `include:` (see the header of
+`ci/agent-ready.gitlab-ci.yml`); `.gitlab-ci.yml` shows the minimal setup.
 
 ## What gives feedback, and where it lives
 
@@ -30,6 +44,8 @@ First run on a fresh checkout: use `./verify --fix` so Spotless normalises forma
 | Real database | Testcontainers (PostgreSQL) | `JdbcWalletRepositoryIT` | full |
 | Do the tests actually assert something? | PIT mutation testing (threshold 85%) | `pom.xml` profile `full` | full |
 | Copy-paste | PMD CPD | `pom.xml` profile `full` | full |
+| Nothing got looser: baselines only shrink, minimums only rise, limits only fall, no new `@SuppressWarnings`/`NOPMD`/`@Disabled` | `tools/Ratchet.java` | `config/baseline/`, `pom.xml` properties | fast |
+| Changed lines are covered (≥ 80%) | diff-cover | CI files | CI, PRs only |
 
 Why Selfie rather than Approvals: expected values are inline in the test source, and
 `./verify --snapshots` rewrites them in place, so the agent sees a normal source diff instead of
@@ -61,22 +77,46 @@ breaks a rule, so keep it specific.
 - Real infrastructure in integration tests (Testcontainers), never an in-memory look-alike database.
 - Coverage is a floor, mutation score is the real measure: an agent can execute code without
   asserting anything, PIT catches that.
-- Fix the code, not the gate: never loosen a threshold or add an ignore to get green.
+- Fix the code, not the gate: never loosen a threshold or add an ignore to get green. The ratchet
+  enforces this (see below).
 
 ## Adopting this in an existing repository
 
 1. Copy `config/`, `.mvn/jvm.config`, the `verify` script, and the plugin blocks from `pom.xml`.
 2. Change `com.example` in the `AnnotatedPackages` option (pom), `ArchitectureTest` and the JaCoCo/PIT
    package filters.
-3. Turn things on one at a time. For a legacy codebase:
-   - ArchUnit: wrap rules in `FreezingArchRule.freeze(...)` (see `src/test/resources/archunit.properties`)
-     so existing violations are recorded and only **new** ones fail.
-   - Checkstyle / PMD: generate a baseline, or start with a handful of rules.
-   - NullAway: start with `-XepOpt:NullAway:AnnotatedPackages=<one package>` and widen.
-   - JaCoCo: gate on changed code only (diff-cover or a Sonar new-code gate), not the global ratio.
-   - PIT: use `scmMutationCoverage` so it only mutates what changed. (`withHistory` now needs a
-     separate history plugin in PIT 1.2x, so it is off.)
-4. Before refactoring untested legacy code, pin its behaviour with Selfie characterization tests.
+3. Copy `.githooks/`, `tools/Ratchet.java`, `config/baseline/` (empty it) and one of the CI files.
+4. Make the build compile with Error Prone and NullAway, then run `./verify --baseline` and commit
+   `config/baseline/`. That is the ratchet (details below).
+5. Set `coverage.*.minimum` and `mutation.score.minimum` in `pom.xml` to today's values (or a bit
+   below). They may only go up from there; changed lines are held to 80% by diff-cover in CI.
+6. Before refactoring untested legacy code, pin its behaviour with Selfie characterization tests.
+
+### The ratchet: existing problems may stay, new ones may not
+
+`./verify --baseline` runs every analysis with failures switched off and records what it finds:
+
+| Gate | Baseline | Granularity |
+|---|---|---|
+| Checkstyle | `config/baseline/checkstyle-suppressions.xml` | file + check. A second over-long method in a file that already has one gets through. |
+| PMD | `config/baseline/pmd-exclusions.properties` (`excludeFromFailureFile`) | class + rule |
+| CPD | `config/baseline/cpd-exclusions.txt` | the set of classes sharing a duplicate |
+| ArchUnit | `config/baseline/archunit/` (every rule is wrapped in `FreezingArchRule.freeze`) | each violation. A fixed violation drops out of the store on the next test run; commit that. |
+| Spotless | none: set `spotless.ratchetFrom` to `origin/main` in `pom.xml` to format only changed files | file |
+| Error Prone / NullAway | cannot be baselined. Narrow `NullAway:AnnotatedPackages` to a few packages, or set single checks to `WARN`, and widen over time | |
+| JaCoCo / PIT | global minimums in `pom.xml` + changed-lines coverage in CI. For PIT on changed code only, see `scmMutationCoverage` | |
+
+Every `./verify` then compares the working tree with a base commit (`RATCHET_BASE`; locally the
+merge-base with `origin`, in CI the PR/MR base) and fails when:
+- a baseline gains an entry (a new violation was recorded instead of fixed),
+- a `*.minimum` property in `pom.xml` drops, a Checkstyle `max*` limit or a `MAX_*` constant in a
+  test rises, a Checkstyle module or PMD rule disappears, an Error Prone check is set to `OFF`/`WARN`,
+- `@SuppressWarnings`, `NOPMD`, `CHECKSTYLE:OFF`, `@Disabled` or `@ArchIgnore` appear more often
+  under `src/` than before.
+
+When a human decides a gate should be looser, a commit in the range carries a
+`Ratchet-Override: <reason>` line: the failures become warnings and the decision stays in history.
+Protect `config/` and `tools/` with CODEOWNERS so such a change needs review.
 
 Verified on JDK 21 and JDK 25 (Docker 29). Tools that hook into javac or read class files
 (google-java-format, Error Prone, NullAway, PMD, JaCoCo, PIT, ArchUnit, Testcontainers) are the
@@ -108,6 +148,8 @@ These were discussed but deliberately left out of this template.
   ```
 
   A `PostToolUse` hook on edits that runs `mvn -q spotless:apply compile` gives faster feedback.
+  Also deny `Bash(git commit --no-verify:*)` and `Bash(git push --no-verify:*)` so the agent cannot
+  skip the git hooks.
 
 **More deterministic tooling**
 - SpotBugs + FindSecBugs: bytecode-level bugs and security patterns.

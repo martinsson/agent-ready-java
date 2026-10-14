@@ -1,0 +1,9 @@
+# This repository's own pipeline: the reusable template plus when to run it.
+include:
+  - local: ci/agent-ready.gitlab-ci.yml
+
+# One pipeline per change: merge request pipelines, plus the default branch.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
