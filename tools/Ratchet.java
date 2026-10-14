@@ -264,12 +264,13 @@ public final class Ratchet {
     before.forEach(
         (key, old) -> {
           String current = now.get(key);
+          String label = label(key);
           if (current == null) {
-            problems.add(where + ": " + key + " was removed");
+            problems.add(where + ": " + label + " was removed");
           } else if (key.endsWith(".minimum") && number(current) < number(old)) {
-            problems.add(where + ": " + key + " lowered from " + old + " to " + current);
+            problems.add(where + ": " + label + " lowered from " + old + " to " + current);
           } else if (key.endsWith(".maximum") && number(current) > number(old)) {
-            problems.add(where + ": " + key + " raised from " + old + " to " + current);
+            problems.add(where + ": " + label + " raised from " + old + " to " + current);
           }
         });
   }
@@ -303,7 +304,7 @@ public final class Ratchet {
   static void checkArchitectureConstants(String base, List<String> problems) throws Exception {
     Map<String, String> before = new TreeMap<>();
     Map<String, String> now = new TreeMap<>();
-    String constant = "static final int (MAX_\\w+) = (\\d+);";
+    String constant = "static final int (MAX_[A-Z0-9_]+) = ([0-9]+);"; // also valid for git grep -E
     for (String file : run("git", "grep", "-l", "--untracked", "-E", constant, "--", "src")) {
       constants(new Git(base).lines(file), file, constant, before);
       constants(this_().lines(file), file, constant, now);
@@ -413,6 +414,12 @@ public final class Ratchet {
     String p = relative(path);
     int root = p.indexOf("/java/");
     return (root < 0 ? p : p.substring(root + 6)).replaceAll("\\.java$", "").replace('/', '.');
+  }
+
+  /** Keys carry a .minimum/.maximum/.module suffix; pom property names keep theirs. */
+  static String label(String key) {
+    boolean pomProperty = !key.contains("/") && !key.contains(" ");
+    return pomProperty ? key : key.replaceAll("\\.(minimum|maximum|module)$", "");
   }
 
   /** com.puppycrawl.tools.checkstyle.checks.sizes.MethodLengthCheck -> MethodLength */
