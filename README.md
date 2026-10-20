@@ -1,7 +1,8 @@
 # agent-ready-java
 
 A small hexagonal Java project that gives a coding agent (or a human) as much **deterministic
-feedback** as possible. Copy the pieces you want into an existing repository.
+feedback** as possible. To add it to an existing repository, paste the prompt in
+[Adopting this in an existing repository](#adopting-this-in-an-existing-repository) into your agent.
 
 ```
 ./verify                 # fast gates, run after every change
@@ -46,7 +47,7 @@ a tip until it is done. GitLab projects reuse the template with `include:` (see 
 | Copy-paste | PMD CPD | `pom.xml` profile `full` | full |
 | Nothing got looser: baselines only shrink, minimums only rise, limits only fall, no new `@SuppressWarnings`/`NOPMD`/`@Disabled` | `tools/ratchet/` | `config/baseline/`, `pom.xml` properties | fast |
 | Shell scripts (`verify`, git hooks) | shellcheck, when installed (it is on GitHub runners) | `verify` | fast |
-| Changed lines are covered (≥ 80%) | diff-cover | CI files | CI, PRs only |
+| Changed lines are covered (≥ 95%) | diff-cover | CI files | CI, PRs only |
 
 Why Selfie rather than Approvals: expected values are inline in the test source, and
 `./verify --snapshots` rewrites them in place, so the agent sees a normal source diff instead of
@@ -89,6 +90,65 @@ breaks a rule, so keep it specific.
 
 ## Adopting this in an existing repository
 
+Paste this prompt into a coding agent opened at the root of your repository:
+
+````text
+Adopt the deterministic feedback setup of https://github.com/martinsson/agent-ready-java in this
+repository. Clone it to a temporary directory and read its README first: it is the specification.
+This repository stays as it is; you add gates around it and record today's violations so that
+existing code passes and new code is held to the rules.
+
+1. Survey: build tool (Maven required; for Gradle, stop and tell me), JDK, base package(s), how the
+   code is layered today, existing static analysis, test frameworks, Mockito usage, CI system.
+   Show me the survey before changing anything.
+2. Copy and adapt: config/, .mvn/jvm.config, verify, .githooks/, tools/ratchet/, the CI file that
+   matches this repository's CI, and the plugin blocks and properties of its pom.xml. Replace
+   com.example everywhere (NullAway AnnotatedPackages, JaCoCo/PIT filters, ArchitectureTest). Merge
+   with existing plugins instead of duplicating them. If the project uses Mockito, do not ban it
+   yet: keep the enforcer, Checkstyle and ArchUnit rules commented out and list them for me.
+3. ArchitectureTest: keep the generic rules (no cycles, package size, no System.out, no generic
+   exceptions). Replace the hexagonal layering rules with rules that describe the layering this
+   code actually has; tell me which ones you guessed.
+4. Make the build compile with Error Prone and NullAway. Narrow AnnotatedPackages, or set single
+   checks to WARN, rather than changing production code; list what you narrowed.
+5. Empty config/baseline/, run ./verify --baseline, set coverage.*.minimum and
+   mutation.score.minimum to today's values (rounded down), then ./verify --full until it is green.
+6. Prove that each gate fires. For each row of the "What gives feedback" table, make the smallest
+   change that should break that gate (an over-long method, an unused private field, a Mockito
+   import, a forbidden dependency between layers, a test without assertion that survives PIT, an
+   added @SuppressWarnings, a lowered minimum...), run ./verify (or --full), check that it fails
+   with that gate's message, and revert. A gate that does not fail is not installed; fix it.
+   Revert every probe and confirm the tree is clean.
+7. Report, as tables:
+   - per tool: version, configured in, fast/full/CI, probe result (fired / did not fire / skipped
+     and why);
+   - per tool: number of active rules, number of baselined violations, and the 5 files with most
+     baselined violations (where the debt is);
+   - ArchUnit: each rule in one line, marked "generic" or "guessed from the code";
+   - coverage and mutation minimums recorded, and what is still not checked.
+Do not commit. I will review the diff.
+````
+
+Read the report before committing, and check that every probe fired: a gate that passed its probe
+is one you know works; the rest is configuration you are trusting.
+
+### After the install: what the prompt cannot do for you
+
+- **Architecture rules need you.** Generic rules work anywhere, but rules that catch design drift
+  encode decisions only the team knows: which modules may depend on which, where I/O is allowed,
+  what a domain object must not see. Follow up with: *"Interview me about this codebase's
+  architecture, one question at a time, then turn each answer into an ArchUnit rule with a
+  `.because(...)` that states the reason, and show me the violations it finds."*
+- **Gates do not make the agent test first.** Coverage of changed lines is enforced in CI (95%),
+  but nothing forces the agent to pin behaviour with a characterization test *before* it touches
+  legacy code, or to read PIT survivors. That comes from the harness (see *Not included*): a
+  `CLAUDE.md` and a bug-fix/feature workflow saying "characterization test first, mutation score
+  on the touched classes after". To find out whether it works, try it: ask the agent for a small
+  bug fix in untested code and look at its first commits. If the first diff is in `src/main`, the
+  workflow is not doing its job.
+
+### Doing it by hand
+
 1. Copy `config/`, `.mvn/jvm.config`, the `verify` script, and the plugin blocks from `pom.xml`.
 2. Change `com.example` in the `AnnotatedPackages` option (pom), `ArchitectureTest` and the JaCoCo/PIT
    package filters.
@@ -96,7 +156,7 @@ breaks a rule, so keep it specific.
 4. Make the build compile with Error Prone and NullAway, then run `./verify --baseline` and commit
    `config/baseline/`. That is the ratchet (details below).
 5. Set `coverage.*.minimum` and `mutation.score.minimum` in `pom.xml` to today's values (or a bit
-   below). They may only go up from there; changed lines are held to 80% by diff-cover in CI.
+   below). They may only go up from there; changed lines are held to 95% by diff-cover in CI.
 6. Before refactoring untested legacy code, pin its behaviour with Selfie characterization tests.
 
 ### The ratchet: existing problems may stay, new ones may not

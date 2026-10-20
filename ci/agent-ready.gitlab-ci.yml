@@ -7,7 +7,7 @@
 #
 # It defines the jobs verify:fast, verify:full and verify:changed-lines-coverage. Override any key by
 # redefining the job in your .gitlab-ci.yml, or build your own jobs with `extends: .agent-ready:*`.
-# The project must contain the verify script, tools/Ratchet.java and config/ (see README).
+# The project must contain the verify script, tools/ratchet/ and config/ (see README).
 #
 # verify:full needs Docker for Testcontainers: Docker-in-Docker, which needs a privileged runner
 # (gitlab.com shared runners are). Without one, set AGENT_READY_FULL: "false".
@@ -91,4 +91,4 @@ verify:changed-lines-coverage:
       diff-cover target/site/jacoco/jacoco.xml
       --compare-branch="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
       --src-roots src/main/java
-      --fail-under=80
+      --fail-under=95

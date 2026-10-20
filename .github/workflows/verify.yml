@@ -66,7 +66,7 @@ jobs:
           pipx run diff-cover==10.6.0 target/site/jacoco/jacoco.xml
           --compare-branch=${{ github.event.pull_request.base.sha }}
           --src-roots src/main/java
-          --fail-under=80
+          --fail-under=95
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
