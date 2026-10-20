@@ -129,6 +129,16 @@ the existing code: report them and let me choose.
        baseline, new code may not add any;
    - coverage and mutation: today's values, suggested as the minimums.
 6. Ask me to choose for each rule, then apply what I chose. Do not commit: I will review the diff.
+7. End by proposing the two next steps the checks cannot cover, and offer to start either:
+   - Architecture: the layering rules you guessed are only a start. Offer to interview me, one
+     question at a time, about which modules may depend on which, where I/O is allowed and what
+     the domain must not see, and to turn each answer into an ArchUnit rule with a .because(...).
+   - Test workflow: the checks catch untested or weakly tested changes, but do not make an agent
+     protect behaviour before changing it. Offer to write a CLAUDE.md (or AGENTS.md) and a
+     bug-fix/feature workflow: characterization test (Selfie) before touching untested code, a
+     failing test before the fix, coverage of changed lines, then PIT on the touched classes and
+     triage of the surviving mutants. Suggest checking that it works by asking for a small fix in
+     untested code: if the first diff is in src/main, the workflow is not followed.
 ````
 
 Read the probe column before anything else: a check that fired on its probe is one you know works,
