@@ -1,6 +1,6 @@
 # Every gate runs here; local hooks are a convenience and can be skipped with --no-verify.
 #   fast  ./verify on every push and pull request (includes the ratchet)
-#   full  ./verify --full: Testcontainers, PIT, CPD, plus coverage of the changed lines on PRs
+#   full  ./verify --full: Testcontainers, PIT, CPD; changed lines also counted by integration tests
 name: verify
 
 on:
@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # the ratchet and diff coverage need the base commit
+          fetch-depth: 0 # the ratchet and the changed-lines coverage need the base commit
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -59,14 +59,6 @@ jobs:
           java-version: "25"
           cache: maven
       - run: ./verify --full
-      # Ratchet for coverage: lines changed by the PR must be covered, whatever the global ratio is.
-      - name: Coverage of changed lines
-        if: github.event_name == 'pull_request'
-        run: >
-          pipx run diff-cover==10.6.0 target/site/jacoco/jacoco.xml
-          --compare-branch=${{ github.event.pull_request.base.sha }}
-          --src-roots src/main/java
-          --fail-under=95
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

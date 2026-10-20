@@ -9,6 +9,8 @@ import java.io.PrintStream;
  * <pre>
  *   java tools/ratchet/Ratchet.java baseline     rewrite config/baseline from the reports in target/
  *   java tools/ratchet/Ratchet.java check REF    compare the working tree with git REF, exit 1 if looser
+ *   java tools/ratchet/Ratchet.java coverage REF fast|full
+ *                                                lines changed since REF must be covered by tests
  * </pre>
  *
  * <p>Run through the verify script. JDK only, so it runs wherever the build runs; Maven compiles
@@ -30,7 +32,12 @@ public final class Ratchet {
     if (args.length == 2 && args[0].equals("check")) {
       return new RatchetCheck(args[1], out).run();
     }
-    out.println("usage: java tools/ratchet/Ratchet.java baseline | check <git-ref>");
+    if (args.length == 3 && args[0].equals("coverage")) {
+      return ChangedLinesCoverage.check(args[1], args[2].equals("full"), out);
+    }
+    out.println(
+        "usage: java tools/ratchet/Ratchet.java baseline | check <git-ref>"
+            + " | coverage <git-ref> fast|full");
     return 2;
   }
 }

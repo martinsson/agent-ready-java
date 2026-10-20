@@ -1,8 +1,7 @@
 # agent-ready-java
 
 A small hexagonal Java project that gives a coding agent (or a human) as much **deterministic
-feedback** as possible. To add it to an existing repository, paste the prompt in
-[Adopting this in an existing repository](#adopting-this-in-an-existing-repository) into your agent.
+feedback** as possible. To add it to an existing repository, paste the prompt below into your agent.
 
 ```
 ./verify                 # fast gates, run after every change
@@ -16,13 +15,45 @@ feedback** as possible. To add it to an existing repository, paste the prompt in
 `./verify` prints `VERIFY OK` or a short list of problems with hints. Full log: `target/verify.log`.
 First run on a fresh checkout: use `./verify --fix` so Spotless normalises formatting.
 
+## Adopting this in an existing repository
+
+Paste this prompt into a coding agent opened at the root of your repository:
+
+````text
+Install https://github.com/martinsson/agent-ready-java in this repository and prove that each of
+its checks works. Clone it to a temporary directory; its README is the specification.
+
+1. Survey the build (Maven only: on Gradle, stop), JDK, packages, current layering, existing
+   analysis, tests and CI. Show me before changing anything.
+2. Copy and adapt verify, .githooks/, config/, .mvn/jvm.config, tools/ratchet/, the matching CI
+   file and the pom.xml plugins and properties; replace com.example. In ArchitectureTest keep the
+   generic rules and rewrite the layering rules to fit this code, marking the ones you guessed.
+3. Measure the existing violations with ./verify --baseline, plus the Error Prone/NullAway errors,
+   coverage and mutation score.
+4. For each row of the README's "What gives feedback" table, add the smallest violation in a new
+   file, check that ./verify (or --full) fails with that check's message, and remove it. Fix the
+   install until every check fires.
+5. Report per tool: probe result and number of rules. Per rule with existing violations: count,
+   files, and one suggestion: fix (few and easy: separate commit), loosen (too many to fix: give
+   the threshold that passes) or ratchet (few but hard: keep them baselined). Ask me to choose,
+   apply my choices, do not commit.
+6. Offer two next steps: an interview about this code's architecture, turned into ArchUnit rules;
+   a CLAUDE.md with a bug-fix/feature workflow (characterization test before touching untested
+   code, then coverage of the changed lines and PIT on the touched classes).
+````
+
+A check that fired on its probe is one you know works; the others are configuration you trust.
+Loosening a rule at this point is a human decision taken before the ratchet starts, not a breach of
+"fix the code, not the gate". The next steps of point 6 are explained in
+[What the checks cannot do](#what-the-checks-cannot-do).
+
 ## When each gate runs
 
 | Where | What | Blocks? |
 |---|---|---|
 | pre-commit (`.githooks/pre-commit`) | Formats the staged Java files and re-stages them | Never: committing to save work comes first. A file with unstaged changes is left alone (formatting it would pull those changes into the commit) and pre-push catches it. |
-| pre-push (`.githooks/pre-push`) | `./verify`: every fast gate plus the ratchet | Yes. Size, structure and design are judged on the whole change, not on each commit. |
-| CI (`.github/workflows/verify.yml`, `ci/agent-ready.gitlab-ci.yml`) | `./verify`, then `./verify --full` and coverage of the changed lines | Yes. Hooks can be skipped with `--no-verify`, CI cannot. |
+| pre-push (`.githooks/pre-push`) | `./verify`: every fast gate, the ratchet and coverage of the changed lines | Yes. Size, structure and design are judged on the whole change, not on each commit. |
+| CI (`.github/workflows/verify.yml`, `ci/agent-ready.gitlab-ci.yml`) | `./verify`, then `./verify --full` | Yes. Hooks can be skipped with `--no-verify`, CI cannot. |
 
 Hooks are opt-in per clone: `./verify --install-hooks` sets `core.hooksPath`, and `./verify` prints
 a tip until it is done. GitLab projects reuse the template with `include:` (see the header of
@@ -47,7 +78,7 @@ a tip until it is done. GitLab projects reuse the template with `include:` (see 
 | Copy-paste | PMD CPD | `pom.xml` profile `full` | full |
 | Nothing got looser: baselines only shrink, minimums only rise, limits only fall, no new `@SuppressWarnings`/`NOPMD`/`@Disabled` | `tools/ratchet/` | `config/baseline/`, `pom.xml` properties | fast |
 | Shell scripts (`verify`, git hooks) | shellcheck, when installed (it is on GitHub runners) | `verify` | fast |
-| Changed lines are covered (≥ 95%) | diff-cover | CI files | CI, PRs only |
+| Lines changed since the ratchet base are covered (≥ 95%); a fast run leaves out what the JaCoCo gate excludes, since integration tests only run with `--full` | `tools/ratchet/` reading JaCoCo's XML report | `coverage.changed.minimum` in `pom.xml` | fast |
 
 Why Selfie rather than Approvals: expected values are inline in the test source, and
 `./verify --snapshots` rewrites them in place, so the agent sees a normal source diff instead of
@@ -88,81 +119,7 @@ breaks a rule, so keep it specific.
 - Fix the code, not the gate: never loosen a threshold or add an ignore to get green. The ratchet
   enforces this (see below).
 
-## Adopting this in an existing repository
-
-Paste this prompt into a coding agent opened at the root of your repository:
-
-````text
-Install the deterministic feedback setup of https://github.com/martinsson/agent-ready-java in this
-repository and prove that every check works. Clone it to a temporary directory and read its README
-first: it is the specification. Do not decide what to do about the violations the checks find in
-the existing code: report them and let me choose.
-
-1. Survey: build tool (Maven required; for Gradle, stop and tell me), JDK, base package(s), how the
-   code is layered today, existing static analysis, test frameworks, CI system. Show me the survey
-   before changing anything.
-2. Install: copy config/, .mvn/jvm.config, verify, .githooks/, tools/ratchet/, the CI file that
-   matches this repository's CI, and the plugin blocks and properties of its pom.xml. Replace
-   com.example everywhere (NullAway AnnotatedPackages, JaCoCo/PIT filters, ArchitectureTest). Merge
-   with existing plugins instead of duplicating them. In ArchitectureTest, keep the generic rules
-   and replace the hexagonal layering rules with rules that describe the layering this code has;
-   mark the ones you guessed.
-3. Measure: empty config/baseline/ and run ./verify --baseline, which records the existing
-   violations without failing. Collect the Error Prone and NullAway errors from the compilation
-   (they cannot be baselined) and today's coverage and mutation score.
-4. Prove that each check fires. For each row of the "What gives feedback" table, add the smallest
-   change that should break it, in a new file so no baseline covers it (an over-long method, an
-   unused private field, a Mockito import, a forbidden dependency between layers, a test without
-   assertion that survives PIT, an added @SuppressWarnings, a lowered minimum...). Run ./verify (or
-   --full) and check that it fails with that check's message. A check that does not fail is not
-   working: fix the installation and probe again. Remove every probe afterwards.
-5. Report, as tables:
-   - per tool: version, where it runs (fast/full/CI), probe result (fired / did not fire / skipped
-     and why), number of active rules;
-   - ArchUnit: each rule in one line, marked "generic" or "guessed from the code";
-   - per rule with existing violations: count, files touched, the size of a fix, and one suggestion:
-     * fix: few occurrences and an easy fix. Keep the rule, fix them in a separate commit after
-       this one;
-     * loosen: so many occurrences that complying means reworking much of the code. Relax the
-       threshold (give the value that passes today) or switch the rule off;
-     * ratchet: a big change but few occurrences. Keep the rule, keep the occurrences in the
-       baseline, new code may not add any;
-   - coverage and mutation: today's values, suggested as the minimums.
-6. Ask me to choose for each rule, then apply what I chose. Do not commit: I will review the diff.
-7. End by proposing the two next steps the checks cannot cover, and offer to start either:
-   - Architecture: the layering rules you guessed are only a start. Offer to interview me, one
-     question at a time, about which modules may depend on which, where I/O is allowed and what
-     the domain must not see, and to turn each answer into an ArchUnit rule with a .because(...).
-   - Test workflow: the checks catch untested or weakly tested changes, but do not make an agent
-     protect behaviour before changing it. Offer to write a CLAUDE.md (or AGENTS.md) and a
-     bug-fix/feature workflow: characterization test (Selfie) before touching untested code, a
-     failing test before the fix, coverage of changed lines, then PIT on the touched classes and
-     triage of the surviving mutants. Suggest checking that it works by asking for a small fix in
-     untested code: if the first diff is in src/main, the workflow is not followed.
-````
-
-Read the probe column before anything else: a check that fired on its probe is one you know works,
-the others are configuration you are trusting. The triage of existing violations is your call, rule
-by rule; the agent only suggests. Loosening a rule here does not contradict "fix the code, not the
-gate": it is a human decision taken before the ratchet starts, and from then on the ratchet holds
-the line.
-
-### After the install: what the prompt cannot do for you
-
-- **Architecture rules need you.** Generic rules work anywhere, but rules that catch design drift
-  encode decisions only the team knows: which modules may depend on which, where I/O is allowed,
-  what a domain object must not see. Follow up with: *"Interview me about this codebase's
-  architecture, one question at a time, then turn each answer into an ArchUnit rule with a
-  `.because(...)` that states the reason, and show me the violations it finds."*
-- **Gates do not make the agent test first.** Coverage of changed lines is enforced in CI (95%),
-  but nothing forces the agent to pin behaviour with a characterization test *before* it touches
-  legacy code, or to read PIT survivors. That comes from the harness (see *Not included*): a
-  `CLAUDE.md` and a bug-fix/feature workflow saying "characterization test first, mutation score
-  on the touched classes after". To find out whether it works, try it: ask the agent for a small
-  bug fix in untested code and look at its first commits. If the first diff is in `src/main`, the
-  workflow is not doing its job.
-
-### Doing it by hand
+## Adopting by hand
 
 1. Copy `config/`, `.mvn/jvm.config`, the `verify` script, and the plugin blocks from `pom.xml`.
 2. Change `com.example` in the `AnnotatedPackages` option (pom), `ArchitectureTest` and the JaCoCo/PIT
@@ -171,7 +128,7 @@ the line.
 4. Make the build compile with Error Prone and NullAway, then run `./verify --baseline` and commit
    `config/baseline/`. That is the ratchet (details below).
 5. Set `coverage.*.minimum` and `mutation.score.minimum` in `pom.xml` to today's values (or a bit
-   below). They may only go up from there; changed lines are held to 95% by diff-cover in CI.
+   below). They may only go up from there; changed lines are held to `coverage.changed.minimum` (95%).
 6. Before refactoring untested legacy code, pin its behaviour with Selfie characterization tests.
 
 ### The ratchet: existing problems may stay, new ones may not
@@ -186,7 +143,7 @@ the line.
 | ArchUnit | `config/baseline/archunit/` (every rule is wrapped in `FreezingArchRule.freeze`) | each violation. A fixed violation drops out of the store on the next test run; commit that. |
 | Spotless | none: set `spotless.ratchetFrom` to `origin/main` in `pom.xml` to format only changed files | file |
 | Error Prone / NullAway | cannot be baselined. Narrow `NullAway:AnnotatedPackages` to a few packages, or set single checks to `WARN`, and widen over time | |
-| JaCoCo / PIT | global minimums in `pom.xml` + changed-lines coverage in CI. For PIT on changed code only, see `scmMutationCoverage` | |
+| JaCoCo / PIT | global minimums in `pom.xml` + coverage of the changed lines. For PIT on changed code only, see `scmMutationCoverage` | |
 
 Every `./verify` then compares the working tree with a base commit (`RATCHET_BASE`; locally the
 merge-base with `origin`, in CI the PR/MR base) and fails when:
@@ -215,6 +172,21 @@ failure. `./verify` turns that log line into a failure. Upgrading PMD means bump
 is older (maven-pmd-plugin 3.24.0 ships PMD 7.3.0, for instance). `mvn versions:display-dependency-updates
 versions:display-plugin-updates` lists what is available. google-java-format 1.37.0 does not work
 with Spotless 3.10.4 yet, so it stays on 1.36.0.
+
+## What the checks cannot do
+
+- **Architecture rules need you.** Generic rules work anywhere, but rules that catch design drift
+  encode decisions only the team knows: which modules may depend on which, where I/O is allowed,
+  what a domain object must not see. Follow up with: *"Interview me about this codebase's
+  architecture, one question at a time, then turn each answer into an ArchUnit rule with a
+  `.because(...)` that states the reason, and show me the violations it finds."*
+- **Gates do not make the agent test first.** Coverage of changed lines is enforced (95%),
+  but nothing forces the agent to pin behaviour with a characterization test *before* it touches
+  legacy code, or to read PIT survivors. That comes from the harness (see *Not included*): a
+  `CLAUDE.md` and a bug-fix/feature workflow saying "characterization test first, mutation score
+  on the touched classes after". To find out whether it works, try it: ask the agent for a small
+  bug fix in untested code and look at its first commits. If the first diff is in `src/main`, the
+  workflow is not doing its job.
 
 ## Not included (by choice): where to add it
 

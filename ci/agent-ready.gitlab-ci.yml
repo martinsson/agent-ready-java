@@ -5,7 +5,7 @@
 #       ref: main
 #       file: ci/agent-ready.gitlab-ci.yml
 #
-# It defines the jobs verify:fast, verify:full and verify:changed-lines-coverage. Override any key by
+# It defines the jobs verify:fast and verify:full. Override any key by
 # redefining the job in your .gitlab-ci.yml, or build your own jobs with `extends: .agent-ready:*`.
 # The project must contain the verify script, tools/ratchet/ and config/ (see README).
 #
@@ -23,7 +23,7 @@ stages:
   image: $AGENT_READY_IMAGE
   stage: verify
   variables:
-    GIT_DEPTH: 0 # the ratchet and diff coverage need the base commit
+    GIT_DEPTH: 0 # the ratchet and the changed-lines coverage need the base commit
     MAVEN_OPTS: -Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository
   cache:
     key:
@@ -73,22 +73,3 @@ verify:full:
     - if: $AGENT_READY_FULL == "true"
   script:
     - ./verify --full
-
-# Ratchet for coverage: lines changed by the MR must be covered, whatever the global ratio is.
-verify:changed-lines-coverage:
-  image: python:3.12
-  stage: verify
-  needs:
-    - job: verify:full
-      artifacts: true
-  variables:
-    GIT_DEPTH: 0
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $AGENT_READY_FULL == "true"
-  script:
-    - pip install --quiet diff-cover==10.6.0
-    - >
-      diff-cover target/site/jacoco/jacoco.xml
-      --compare-branch="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
-      --src-roots src/main/java
-      --fail-under=95

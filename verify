@@ -3,7 +3,8 @@
 #
 #   ./verify                 fast gates (seconds to ~1 min): format, structure, static analysis,
 #                            compile with Error Prone + NullAway, PMD, unit/property/architecture/
-#                            snapshot tests, coverage gate, ratchet (no gate got looser)
+#                            snapshot tests, coverage gate, ratchet (no gate got looser),
+#                            coverage of the lines changed since the ratchet base
 #   ./verify --full          everything above + Docker integration tests (Testcontainers),
 #                            mutation testing (PIT), copy-paste detection (CPD)
 #   ./verify --fix           auto-format with Spotless first, then run the fast gates
@@ -116,7 +117,9 @@ lint_scripts() {
   shellcheck -f gcc verify .githooks/*
 }
 
-ratchet() {
+# What the ratchet and the changed-lines coverage compare with. Prints nothing when there is no
+# base: first push of a new repository, or a branch created in CI.
+ratchet_base() {
   local base="${RATCHET_BASE:-}" ref
   if [ -z "$base" ]; then
     for ref in origin/HEAD origin/main origin/master; do
@@ -125,15 +128,29 @@ ratchet() {
       fi
     done
   fi
-  # Nothing to compare with: first push of a new repository, or a branch created in CI.
   if [ -z "$base" ] || [ "$base" = none ] || [[ "$base" =~ ^0+$ ]]; then
     return 0
   fi
   if ! git rev-parse -q --verify "$base^{commit}" >/dev/null; then
-    echo "RATCHET: cannot find $base (shallow clone? fetch the full history)"
+    echo "RATCHET: cannot find $base (shallow clone? fetch the full history)" >&2
     return 1
   fi
+  echo "$base"
+}
+
+ratchet() {
+  local base
+  base=$(ratchet_base) || return 1
+  [ -z "$base" ] && return 0
   "$JAVA" tools/ratchet/Ratchet.java check "$base"
+}
+
+# Lines changed since the base must be covered (coverage.changed.minimum), read from JaCoCo's report.
+changed_lines_coverage() {
+  local base
+  base=$(ratchet_base 2>/dev/null) || return 0 # ratchet() already reported it
+  [ -z "$base" ] && return 0
+  "$JAVA" tools/ratchet/Ratchet.java coverage "$base" "$mode"
 }
 
 case "$action" in
@@ -174,8 +191,13 @@ build=$?
 # A PMD older than the JDK cannot read its class files. PMD only logs that, turns type resolution
 # off and passes, so type-based rules quietly stop working. Treat it as the failure it is.
 grep -q -E 'Unsupported class file major version|Parsing failed in ParseLock' "$log" && build=1
-checks_out=$(ratchet)
+checks_out=$(ratchet 2>&1)
 checks_status=$?
+if [ "$build" -eq 0 ]; then
+  coverage_out=$(changed_lines_coverage) || checks_status=1
+  [ -n "$coverage_out" ] && checks_out="${checks_out:+$checks_out
+}$coverage_out"
+fi
 lint_out=$(lint_scripts)
 [ -n "$lint_out" ] && checks_out="${checks_out:+$checks_out
 }$lint_out" && checks_status=1

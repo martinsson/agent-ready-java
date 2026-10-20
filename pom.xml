@@ -34,7 +34,7 @@
       Ratchet. Existing violations are recorded under config/baseline (regenerate with the verify
       script's baseline option) and only NEW violations fail. The verify script also refuses a
       baseline that grows, a *.minimum property that drops, and a Checkstyle or PMD limit that is
-      loosened or removed (tools/Ratchet.java).
+      loosened or removed (tools/ratchet/).
     -->
     <checkstyle.baseline>config/baseline/checkstyle-suppressions.xml</checkstyle.baseline>
     <pmd.baseline>config/baseline/pmd-exclusions.properties</pmd.baseline>
@@ -43,6 +43,8 @@
     <spotless.ratchetFrom></spotless.ratchetFrom>
     <coverage.line.minimum>0.90</coverage.line.minimum>
     <coverage.branch.minimum>0.85</coverage.branch.minimum>
+    <!-- Lines changed since the ratchet base (tools/ratchet/ChangedLinesCoverage.java). -->
+    <coverage.changed.minimum>0.95</coverage.changed.minimum>
     <mutation.score.minimum>85</mutation.score.minimum>
   </properties>
 
