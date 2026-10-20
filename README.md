@@ -93,44 +93,49 @@ breaks a rule, so keep it specific.
 Paste this prompt into a coding agent opened at the root of your repository:
 
 ````text
-Adopt the deterministic feedback setup of https://github.com/martinsson/agent-ready-java in this
-repository. Clone it to a temporary directory and read its README first: it is the specification.
-This repository stays as it is; you add gates around it and record today's violations so that
-existing code passes and new code is held to the rules.
+Install the deterministic feedback setup of https://github.com/martinsson/agent-ready-java in this
+repository and prove that every check works. Clone it to a temporary directory and read its README
+first: it is the specification. Do not decide what to do about the violations the checks find in
+the existing code: report them and let me choose.
 
 1. Survey: build tool (Maven required; for Gradle, stop and tell me), JDK, base package(s), how the
-   code is layered today, existing static analysis, test frameworks, Mockito usage, CI system.
-   Show me the survey before changing anything.
-2. Copy and adapt: config/, .mvn/jvm.config, verify, .githooks/, tools/ratchet/, the CI file that
+   code is layered today, existing static analysis, test frameworks, CI system. Show me the survey
+   before changing anything.
+2. Install: copy config/, .mvn/jvm.config, verify, .githooks/, tools/ratchet/, the CI file that
    matches this repository's CI, and the plugin blocks and properties of its pom.xml. Replace
    com.example everywhere (NullAway AnnotatedPackages, JaCoCo/PIT filters, ArchitectureTest). Merge
-   with existing plugins instead of duplicating them. If the project uses Mockito, do not ban it
-   yet: keep the enforcer, Checkstyle and ArchUnit rules commented out and list them for me.
-3. ArchitectureTest: keep the generic rules (no cycles, package size, no System.out, no generic
-   exceptions). Replace the hexagonal layering rules with rules that describe the layering this
-   code actually has; tell me which ones you guessed.
-4. Make the build compile with Error Prone and NullAway. Narrow AnnotatedPackages, or set single
-   checks to WARN, rather than changing production code; list what you narrowed.
-5. Empty config/baseline/, run ./verify --baseline, set coverage.*.minimum and
-   mutation.score.minimum to today's values (rounded down), then ./verify --full until it is green.
-6. Prove that each gate fires. For each row of the "What gives feedback" table, make the smallest
-   change that should break that gate (an over-long method, an unused private field, a Mockito
-   import, a forbidden dependency between layers, a test without assertion that survives PIT, an
-   added @SuppressWarnings, a lowered minimum...), run ./verify (or --full), check that it fails
-   with that gate's message, and revert. A gate that does not fail is not installed; fix it.
-   Revert every probe and confirm the tree is clean.
-7. Report, as tables:
-   - per tool: version, configured in, fast/full/CI, probe result (fired / did not fire / skipped
-     and why);
-   - per tool: number of active rules, number of baselined violations, and the 5 files with most
-     baselined violations (where the debt is);
+   with existing plugins instead of duplicating them. In ArchitectureTest, keep the generic rules
+   and replace the hexagonal layering rules with rules that describe the layering this code has;
+   mark the ones you guessed.
+3. Measure: empty config/baseline/ and run ./verify --baseline, which records the existing
+   violations without failing. Collect the Error Prone and NullAway errors from the compilation
+   (they cannot be baselined) and today's coverage and mutation score.
+4. Prove that each check fires. For each row of the "What gives feedback" table, add the smallest
+   change that should break it, in a new file so no baseline covers it (an over-long method, an
+   unused private field, a Mockito import, a forbidden dependency between layers, a test without
+   assertion that survives PIT, an added @SuppressWarnings, a lowered minimum...). Run ./verify (or
+   --full) and check that it fails with that check's message. A check that does not fail is not
+   working: fix the installation and probe again. Remove every probe afterwards.
+5. Report, as tables:
+   - per tool: version, where it runs (fast/full/CI), probe result (fired / did not fire / skipped
+     and why), number of active rules;
    - ArchUnit: each rule in one line, marked "generic" or "guessed from the code";
-   - coverage and mutation minimums recorded, and what is still not checked.
-Do not commit. I will review the diff.
+   - per rule with existing violations: count, files touched, the size of a fix, and one suggestion:
+     * fix: few occurrences and an easy fix. Keep the rule, fix them in a separate commit after
+       this one;
+     * loosen: so many occurrences that complying means reworking much of the code. Relax the
+       threshold (give the value that passes today) or switch the rule off;
+     * ratchet: a big change but few occurrences. Keep the rule, keep the occurrences in the
+       baseline, new code may not add any;
+   - coverage and mutation: today's values, suggested as the minimums.
+6. Ask me to choose for each rule, then apply what I chose. Do not commit: I will review the diff.
 ````
 
-Read the report before committing, and check that every probe fired: a gate that passed its probe
-is one you know works; the rest is configuration you are trusting.
+Read the probe column before anything else: a check that fired on its probe is one you know works,
+the others are configuration you are trusting. The triage of existing violations is your call, rule
+by rule; the agent only suggests. Loosening a rule here does not contradict "fix the code, not the
+gate": it is a human decision taken before the ratchet starts, and from then on the ratchet holds
+the line.
 
 ### After the install: what the prompt cannot do for you
 
