@@ -1,0 +1,5 @@
+# LF everywhere, even on Windows with core.autocrlf=true: a \r breaks bash ($'\r': command not
+# found), and tests compare with snapshots and fixtures written in LF. Only the .cmd keeps CRLF,
+# which cmd.exe expects.
+* text=auto eol=lf
+*.cmd text eol=crlf
