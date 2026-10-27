@@ -13,6 +13,9 @@ feedback** as possible. To add it to an existing repository, paste the prompt be
 ```
 
 `./verify` prints `VERIFY OK` or a short list of problems with hints. Full log: `target/verify.log`.
+While it runs, stderr names the gate in progress and the time spent (`21s  tests: WalletTest`), also
+when the pre-push hook runs it: one line rewritten in place on a terminal, one line per gate in CI.
+On Windows, `.\verify` in PowerShell or cmd runs `verify.cmd`, which hands the script to Git Bash.
 First run on a fresh checkout: use `./verify --fix` so Spotless normalises formatting.
 
 ## Adopting this in an existing repository
@@ -53,7 +56,7 @@ Loosening a rule at this point is a human decision taken before the ratchet star
 |---|---|---|
 | pre-commit (`.githooks/pre-commit`) | Formats the staged Java files and re-stages them | Never: committing to save work comes first. A file with unstaged changes is left alone (formatting it would pull those changes into the commit) and pre-push catches it. |
 | pre-push (`.githooks/pre-push`) | `./verify`: every fast gate, the ratchet and coverage of the changed lines | Yes. Size, structure and design are judged on the whole change, not on each commit. |
-| CI (`.github/workflows/verify.yml`, `ci/agent-ready.gitlab-ci.yml`) | `./verify`, then `./verify --full` | Yes. Hooks can be skipped with `--no-verify`, CI cannot. |
+| CI (`.github/workflows/verify.yml`, `ci/agent-ready.gitlab-ci.yml`) | `./verify`, then `./verify --full`; on GitHub also `./verify` on Windows in a French locale | Yes. Hooks can be skipped with `--no-verify`, CI cannot. |
 
 Hooks are opt-in per clone: `./verify --install-hooks` sets `core.hooksPath`, and `./verify` prints
 a tip until it is done. GitLab projects reuse the template with `include:` (see the header of
@@ -83,6 +86,30 @@ a tip until it is done. GitLab projects reuse the template with `include:` (see 
 Why Selfie rather than Approvals: expected values are inline in the test source, and
 `./verify --snapshots` rewrites them in place, so the agent sees a normal source diff instead of
 `.approved.txt` files.
+
+## Platform independence
+
+Developers run `./verify` on Windows too, so the tests must pass there. The `windows` CI job runs
+the fast gates on `windows-latest` with `-Duser.language=fr -Duser.country=CH`: a suite that only
+ever ran on Linux in English typically fails there by the hundred. What breaks, and where to fix it:
+
+- **Line ends.** `.gitattributes` checks every file out in LF, so snapshots and fixtures match
+  everywhere and bash does not choke on `\r`. The code under test still prints `\r\n` on Windows,
+  which is right for its user: turn `System.lineSeparator()` into `\n` once, in the helper that
+  captures output, not in each test.
+- **Paths.** Likewise, a Windows user should see `C:\...\out.csv`. Where tests replace the temp
+  directory with a placeholder, the same helper writes the rest of that path with `/`, and replaces
+  the real path too (`toRealPath()`: macOS `/var` is a link, Windows has `RUNNER~1` short names).
+- **File permissions.** `Files.setPosixFilePermissions` throws on Windows. To make a file
+  unreadable there, put a deny-read entry in front of its ACL (`AclFileAttributeView`).
+- **Numbers and dates.** `String.format("%.1f")` writes `12,5` in a French locale, and
+  `Double.parseDouble` then throws. Format with `Locale.ROOT` what is read back by a program;
+  keep the user's locale only for what a human reads.
+- **Colours.** Decide once whether output gets ANSI codes (a real terminal, no `NO_COLOR`) and use
+  that rule for every output, `--help` included: Git Bash sets `TERM` even when output goes to a
+  file.
+- **OS messages.** Exception messages differ (`Connection refused: getsockopt` on Windows):
+  assert on the part that does not depend on the platform.
 
 ## Architecture (hexagonal)
 
