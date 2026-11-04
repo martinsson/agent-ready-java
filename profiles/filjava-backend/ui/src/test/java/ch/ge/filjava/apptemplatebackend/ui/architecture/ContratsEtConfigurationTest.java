@@ -8,6 +8,7 @@ import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,10 +21,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class ContratsEtConfigurationTest {
 
     private static final Path RESSOURCES = Path.of("src/main/resources");
+    private static final Path APPLICATION_YML = RESSOURCES.resolve("application.yml");
     private static final Pattern IDENTIFIANT_UTILISATEUR =
-            Pattern.compile("(?i).*(identifiant|userid|user_id|username|utilisateurid).*");
-    private static final Pattern CLE_SENSIBLE =
-            Pattern.compile("(?i).*(password|secret|username|client-id|issuer-uri|datasource\\.url|frontend-url)$");
+            Pattern.compile("(?i).*(identifiant|user.?id|user.?name|utilisateur.?id|id.?utilisateur).*");
+    private static final Pattern CLE_SENSIBLE = Pattern.compile(
+            "(?i).*(password|secret|token|api-key|private-key|username|client-id|issuer-uri|host"
+                    + "|datasource\\.url|frontend-url)$");
+    /** Une variable sans valeur par défaut, en tête de valeur ou juste après le schéma d'une URL. */
+    private static final Pattern VALEUR_INJECTEE =
+            Pattern.compile("^([a-z:]+//)?\\$\\{[A-Z0-9_]+\\}[^$]*(\\$\\{[A-Z0-9_]+\\}[^$]*)*$");
 
     @Test
     void aucunContratNAccepteDIdentifiantUtilisateur() throws IOException {
@@ -42,15 +48,21 @@ class ContratsEtConfigurationTest {
 
     @Test
     void lesValeursSensiblesViennentDeLEnvironnement() throws IOException {
-        Map<String, String> configuration = configuration();
+        Map<String, String> configuration = new LinkedHashMap<>();
+        try (var fichiers = Files.list(RESSOURCES)) {
+            for (Path fichier : fichiers.filter(ContratsEtConfigurationTest::estConfiguration).toList()) {
+                configuration(fichier).forEach((cle, valeur) ->
+                        configuration.put(fichier.getFileName() + ":" + cle, valeur));
+            }
+        }
         List<String> enDur = configuration.entrySet().stream()
                 .filter(cle -> CLE_SENSIBLE.matcher(cle.getKey()).matches())
-                .filter(cle -> !cle.getValue().contains("${"))
+                .filter(cle -> !VALEUR_INJECTEE.matcher(cle.getValue()).matches())
                 .map(Map.Entry::getKey)
                 .toList();
         assertFalse(configuration.isEmpty());
         assertEquals(List.of(), enDur,
-                "Hostnames, identifiants et secrets sont injectés par variables d'environnement");
+                "Hostnames, identifiants et secrets sont injectés par variables d'environnement, sans valeur par défaut");
     }
 
     @Test
@@ -64,6 +76,10 @@ class ContratsEtConfigurationTest {
     void hibernateNeModifieJamaisLeSchema() throws IOException {
         assertEquals("validate", configuration().get("spring.jpa.hibernate.ddl-auto"),
                 "Le schéma vient des scripts de db/migration, Hibernate le vérifie seulement");
+    }
+
+    private static boolean estConfiguration(Path fichier) {
+        return fichier.getFileName().toString().startsWith("application") && estYaml(fichier);
     }
 
     private static boolean estYaml(Path fichier) {
@@ -85,8 +101,8 @@ class ContratsEtConfigurationTest {
                 if ("properties".equals(cle) && valeur instanceof Map<?, ?> proprietes) {
                     proprietes.keySet().forEach(nom -> signaler(nom, chemin, trouves));
                 }
-                if ("parameters".equals(cle) && valeur instanceof List<?> parametres) {
-                    parametres.stream()
+                if ("parameters".equals(cle)) {
+                    parametres(valeur).stream()
                             .filter(Map.class::isInstance)
                             .forEach(parametre -> signaler(((Map<?, ?>) parametre).get("name"), chemin, trouves));
                 }
@@ -97,6 +113,14 @@ class ContratsEtConfigurationTest {
         }
     }
 
+    /** Une liste sous un chemin, une table sous {@code components}. */
+    private static Collection<?> parametres(Object valeur) {
+        if (valeur instanceof List<?> liste) {
+            return liste;
+        }
+        return valeur instanceof Map<?, ?> table ? table.values() : List.of();
+    }
+
     private static void signaler(Object nom, String chemin, List<String> trouves) {
         if (nom != null && IDENTIFIANT_UTILISATEUR.matcher(nom.toString()).matches()) {
             trouves.add(chemin + " -> " + nom);
@@ -104,14 +128,16 @@ class ContratsEtConfigurationTest {
     }
 
     private static Map<String, String> configuration() throws IOException {
+        return configuration(APPLICATION_YML);
+    }
+
+    private static Map<String, String> configuration(Path fichier) throws IOException {
         Map<String, String> aplatie = new LinkedHashMap<>();
-        for (Object document : documents(RESOURCES_APPLICATION)) {
+        for (Object document : documents(fichier)) {
             aplatir(document, "", aplatie);
         }
         return aplatie;
     }
-
-    private static final Path RESOURCES_APPLICATION = RESSOURCES.resolve("application.yml");
 
     private static void aplatir(Object noeud, String prefixe, Map<String, String> aplatie) {
         if (noeud instanceof Map<?, ?> table) {

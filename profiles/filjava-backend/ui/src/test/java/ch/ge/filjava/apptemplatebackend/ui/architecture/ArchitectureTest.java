@@ -22,7 +22,8 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
 /**
  * Principes du template rendus vérifiables sur le code de production. Le message de chaque règle
  * est la première chose que lit un développeur ou un agent : il donne la raison et l'exemple à
- * suivre. Une règle qui ne convient plus à ce projet se modifie ou se supprime ici.
+ * suivre. Une règle qui ne convient plus à ce projet se modifie ou se supprime ici, sur décision du
+ * développeur.
  */
 @AnalyzeClasses(
         packages = ArchitectureTest.RACINE,
@@ -56,8 +57,8 @@ class ArchitectureTest {
     @ArchTest
     static final ArchRule pasDePackageParType = noClasses()
             .should().resideInAnyPackage(
-                    "..model..", "..repository..", "..service..",
-                    "..request..", "..response..", "..controller..")
+                    RACINE + "..model..", RACINE + "..repository..", RACINE + "..service..",
+                    RACINE + "..request..", RACINE + "..response..", RACINE + "..controller..")
             .because("le code est regroupé par fonctionnalité, pas par type technique "
                     + "(voir domain/profilutilisateur)");
 
