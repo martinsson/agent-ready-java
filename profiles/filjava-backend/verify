@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Lance `mvn clean verify` et n'affiche que l'essentiel, pour ne pas saturer le contexte d'un agent.
+# Code retour 0 = tout est vert. Journal complet : target/verify.log
+set -uo pipefail
+cd "$(dirname "$0")" || exit 2
+
+if [ "$#" -ne 0 ]; then
+  echo "verify ne prend aucun argument : pour autre chose, lancer mvn directement." >&2
+  exit 2
+fi
+
+# `clean` vide target/ : le journal n'y est déplacé qu'à la fin.
+log=target/verify.log
+tmp=$(mktemp)
+mvn -B -ntp clean verify >"$tmp" 2>&1
+build=$?
+mkdir -p target
+mv "$tmp" "$log"
+
+# Un PMD plus ancien que le JDK ne lit plus les classes : il le journalise et passe quand même.
+# Il abandonne aussi un fichier qu'il ne sait pas lire, sans faire échouer le build.
+pmd_ignore='Unsupported class file major version|Parsing failed in ParseLock|PMD processing error'
+grep -q -E "$pmd_ignore" "$log" && build=1
+
+if [ "$build" -eq 0 ]; then
+  echo "VERIFY OK"
+  exit 0
+fi
+
+echo "VERIFY ÉCHOUÉ. Premiers problèmes (journal complet : $log) :"
+racine=$(printf '%s' "$PWD/" | sed 's/[][\.*^$|]/\\&/g')
+problemes=$(grep -E "$pmd_ignore"'|^\[WARNING\] .*\.java: [A-Za-z]+Exception: |^\[ERROR\]|PMD Failure:|Tests run:.*(Failures|Errors): [1-9]|^(Class|Method|Field|Constructor|Cycle detected)|Architecture Violation|Rule violated' "$log" |
+  grep -v -E 'To see the full stack trace|Re-run Maven|For more information|^\[ERROR\] (-> )?\[Help 1\]|^\[ERROR\] *$|After correcting the problems|mvn <args>' |
+  sed -E -e 's/^\[ERROR\] +//' -e 's/ -> \[Help 1\]$//' -e 's/^\[WARNING\] +//' |
+  sed "s|$racine||g" |
+  awk '!seen[$0]++' |
+  cut -c1-400 |
+  head -40)
+# Rien de reconnu (Maven qui ne démarre pas, par exemple) : ne pas laisser une liste vide.
+if [ -n "$problemes" ]; then
+  printf '%s\n' "$problemes"
+else
+  tail -n 15 "$log" | cut -c1-400
+fi
+
+grep -q 'Not a Java binary name' "$log" &&
+  echo "INDICE : PMD ne lit pas un import accentué ; pour Cucumber, écrire @Soit au lieu de @Etantdonné."
+grep -q 'Architecture Violation' "$log" &&
+  echo "INDICE : la raison et l'exemple à suivre sont après « because » ; règles dans ui/.../architecture/."
+grep -q 'maven-checkstyle-plugin' "$log" && grep -q 'Failed to execute goal.*checkstyle' "$log" &&
+  echo "INDICE : limite de structure dépassée ; cherche le concept qui veut sortir. Limites dans config/checkstyle/."
+grep -q 'Failed to execute goal.*maven-pmd-plugin' "$log" &&
+  echo "INDICE : règle PMD ; détail dans target/pmd.xml du module, règles dans config/pmd/ruleset.xml."
+if grep -q -E 'Architecture Violation|Failed to execute goal.*(checkstyle|pmd)' "$log"; then
+  echo "NOTE : ces contrôles révèlent un problème de conception, la bonne réponse peut dépasser la ligne signalée."
+  echo "       Si une règle ne convient plus à ce projet, c'est au développeur de décider de la changer."
+fi
+exit 1

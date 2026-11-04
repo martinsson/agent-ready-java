@@ -1,0 +1,3 @@
+# Scripts de vérification : fins de ligne fixes quel que soit le poste
+verify text eol=lf
+verify.cmd text eol=crlf
