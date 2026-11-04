@@ -45,7 +45,7 @@ retient.
 | ArchUnit | Cucumber uniquement dans `ui/bdd` ; pas de Mockito dans les tests de `ui` |
 | ArchUnit | Pas de `System.out`, de `java.util.logging`, d'exception générique, d'injection par champ |
 | JUnit | Aucun contrat OpenAPI ne porte d'identifiant utilisateur (paramètre ou propriété) |
-| JUnit | `application*.yml` : valeurs sensibles en `${VARIABLE}` sans valeur par défaut, hôte d'URL compris ; `application.yml` : Actuator limité à `health,info,prometheus`, `ddl-auto: validate` |
+| JUnit | `application*.yml` : valeurs sensibles en `${VARIABLE}` sans valeur par défaut, hôte d'URL compris, et `ddl-auto: validate` ; `application.yml` : Actuator limité à `health,info,prometheus` |
 | Checkstyle | Tailles, complexité, couplage, imports inutilisés (`config/checkstyle/`) |
 | PMD | Code mort et défauts de conception (`config/pmd/`) |
 | Error Prone | Bloque en sévérité ERROR ; les avertissements restent affichés. `UnicodeInCode` coupé : le vocabulaire est français |
