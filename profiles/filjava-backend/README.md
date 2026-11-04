@@ -48,5 +48,12 @@ retient.
 | NullAway | Code de production uniquement, hors code généré et entités JPA |
 | JaCoCo | `core` : 90 % des lignes, 85 % des branches |
 
-Chaque règle a été vérifiée en plaçant une violation volontaire, sauf `requireJavaVersion` et les
-modules Checkstyle ou PMD non visés par une sonde.
+Chaque règle a été vérifiée en plaçant une violation volontaire, sauf les modules Checkstyle ou PMD
+non visés par une sonde.
+
+## Version de Java
+
+Le profil vise Java 25, mais ses règles n'en dépendent pas. Le seul outil qui ne tourne pas sur un
+JDK 17 est Error Prone 2.50 (JDK 21 minimum), et NullAway s'exécute comme son extension. Sur un
+JDK 21, Error Prone exige aussi `-XDaddTypeAnnotationsToSymbol=true`. Le README du template détaille
+les adaptations essayées pour une cible 21 et une cible 17.

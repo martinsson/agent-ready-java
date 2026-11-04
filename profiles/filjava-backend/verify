@@ -22,8 +22,8 @@ fi
 
 echo "VERIFY ÉCHOUÉ. Premiers problèmes (journal complet : $log) :"
 grep -E '^\[ERROR\]|PMD Failure:|Tests run:.*(Failures|Errors): [1-9]|^(Class|Method|Field|Constructor|Cycle detected)|Architecture Violation|Rule violated' "$log" |
-  grep -v -E 'To see the full stack trace|Re-run Maven|For more information|\[Help 1\]|^\[ERROR\] *$|After correcting the problems|mvn <args>' |
-  sed -E 's/^\[ERROR\] +//' |
+  grep -v -E 'To see the full stack trace|Re-run Maven|For more information|^\[ERROR\] (-> )?\[Help 1\]|^\[ERROR\] *$|After correcting the problems|mvn <args>' |
+  sed -E -e 's/^\[ERROR\] +//' -e 's/ -> \[Help 1\]$//' |
   sed "s|$PWD/||g" |
   awk '!seen[$0]++' |
   cut -c1-400 |
