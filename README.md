@@ -50,6 +50,12 @@ Loosening a rule at this point is a human decision taken before the ratchet star
 "fix the code, not the gate". The next steps of point 6 are explained in
 [What the checks cannot do](#what-the-checks-cannot-do).
 
+## Profiles
+
+[`profiles/filjava-backend`](profiles/filjava-backend/README.md): the rules specialised for the
+FILJAVA backend template (multi-module Maven, CXF, OpenAPI, Cucumber). Self-contained, not part of
+this repository's own build.
+
 ## When each gate runs
 
 | Where | What | Blocks? |
